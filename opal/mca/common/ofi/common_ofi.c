@@ -814,6 +814,38 @@ out:
     return current_provider;
 }
 
+static struct fi_info *select_provider_by_name(struct fi_info *provider_list, uint32_t rank)
+{
+    struct fi_info *current_provider = NULL;
+
+    char *dev_str;
+
+    dev_str = getenv("OMPI_EFA_DEVICE");
+    if (!dev_str) {
+        printf("OMPI_EFA_DEVICES not found\n");
+        return NULL;
+    }
+
+    opal_output_verbose(1, opal_common_ofi.output, "Rank: %d trying to find device: %s", rank,
+                        dev_str);
+
+    // rank is the package_rank, so we can set
+    for (current_provider = provider_list; NULL != current_provider;) {
+            if (0 == strcmp(dev_str, current_provider->domain_attr->name)) {
+            opal_output_verbose(1, opal_common_ofi.output,
+                                "package rank: %d is mapped to device: %s", rank,
+                                dev_str);
+            goto out;
+        }
+        current_provider = current_provider->next;
+    }
+    opal_output_verbose(1, opal_common_ofi.output, "Warning: Rank: %d unsuccessful to find device: %s",
+                        rank, dev_str);
+    return NULL;
+out:
+    return current_provider;
+}
+
 static int count_providers(struct fi_info *provider_list)
 {
     struct fi_info *dev = provider_list;
@@ -921,6 +953,11 @@ struct fi_info *opal_common_ofi_select_provider(struct fi_info *provider_list,
     int ret, num_providers = 0;
     struct fi_info *provider = NULL;
     uint32_t package_rank = process_info->my_local_rank;
+
+    provider = select_provider_by_name(provider_list, package_rank);
+    if (NULL != provider) {
+      goto out;
+    }
 
     num_providers = count_providers(provider_list);
     if (!process_info->proc_is_bound || 2 > num_providers) {
